@@ -314,7 +314,7 @@ type HTTPProbe struct {
 	Compression                  string                  `yaml:"compression,omitempty"`
 	BodySizeLimit                units.Base2Bytes        `yaml:"body_size_limit,omitempty"`
 	UseHTTP3                     bool                    `yaml:"enable_http3,omitempty"`
-    AcceptAnyResponse            bool                    `yaml:"accept_any_response,omitempty"`
+	AcceptAnyResponse            bool                    `yaml:"accept_any_response,omitempty"`
 }
 
 type GRPCProbe struct {
@@ -484,9 +484,6 @@ func (s *DNSProbe) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type plain DNSProbe
 	if err := unmarshal((*plain)(s)); err != nil {
 		return err
-	}
-	if s.QueryName == "" {
-		return errors.New("query name must be set for DNS module")
 	}
 	if s.QueryClass != "" {
 		if _, ok := dns.StringToClass[s.QueryClass]; !ok {
