@@ -1,4 +1,14 @@
 modules:
+  # Пример пробы, которая принимает любой HTTP ответ (любой статус код)
+  http_any_response:
+    prober: http
+    timeout: 5s
+    http:
+      # Принимаем любой статус код независимо от значения
+      accept_any_response: true
+      method: GET
+      follow_redirects: true
+
   http_2xx_example:
     prober: http
     timeout: 5s

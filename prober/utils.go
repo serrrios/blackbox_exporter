@@ -42,13 +42,19 @@ func chooseProtocol(ctx context.Context, IPProtocol string, fallbackIPProtocol b
 		Help: "Specifies whether probe ip protocol is IP4 or IP6",
 	})
 
-	probeIPAddrHash := prometheus.NewGauge(prometheus.GaugeOpts{
+    probeIPAddrHash := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "probe_ip_addr_hash",
 		Help: "Specifies the hash of IP address. It's useful to detect if the IP address changes.",
 	})
+    
+    probeIPInfo := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+        Name: "probe_ip_info",
+        Help: "Information about resolved IP addresses with labels",
+    }, []string{"target", "ip", "protocol"})
 	registry.MustRegister(probeIPProtocolGauge)
 	registry.MustRegister(probeDNSLookupTimeSeconds)
-	registry.MustRegister(probeIPAddrHash)
+    registry.MustRegister(probeIPAddrHash)
+    registry.MustRegister(probeIPInfo)
 
 	if IPProtocol == "ip6" || IPProtocol == "" {
 		IPProtocol = "ip6"
@@ -68,13 +74,14 @@ func chooseProtocol(ctx context.Context, IPProtocol string, fallbackIPProtocol b
 
 	resolver := &net.Resolver{}
 	if !fallbackIPProtocol {
-		ips, err := resolver.LookupIP(ctx, IPProtocol, target)
+        ips, err := resolver.LookupIP(ctx, IPProtocol, target)
 		if err == nil {
 			for _, ip := range ips {
-				logger.Debug("Resolved target address", "target", target, "ip", ip.String())
+                logger.Debug("Resolved target address", "target", target, "ip", ip.String())
 				probeIPProtocolGauge.Set(protocolToGauge[IPProtocol])
 				probeIPAddrHash.Set(ipHash(ip))
-				return &net.IPAddr{IP: ip}, lookupTime, nil
+                probeIPInfo.WithLabelValues(target, ip.String(), IPProtocol).Set(1)
+                return &net.IPAddr{IP: ip}, lookupTime, nil
 			}
 		}
 		logger.Error("Resolution with IP protocol failed", "target", target, "ip_protocol", IPProtocol, "err", err)
@@ -92,22 +99,24 @@ func chooseProtocol(ctx context.Context, IPProtocol string, fallbackIPProtocol b
 	for _, ip := range ips {
 		switch IPProtocol {
 		case "ip4":
-			if ip.IP.To4() != nil {
+            if ip.IP.To4() != nil {
 				logger.Debug("Resolved target address", "target", target, "ip", ip.String())
 				probeIPProtocolGauge.Set(4)
 				probeIPAddrHash.Set(ipHash(ip.IP))
-				return &ip, lookupTime, nil
+                probeIPInfo.WithLabelValues(target, ip.IP.String(), "ip4").Set(1)
+                return &ip, lookupTime, nil
 			}
 
 			// ip4 as fallback
 			fallback = &ip
 
 		case "ip6":
-			if ip.IP.To4() == nil {
+            if ip.IP.To4() == nil {
 				logger.Debug("Resolved target address", "target", target, "ip", ip.String())
 				probeIPProtocolGauge.Set(6)
 				probeIPAddrHash.Set(ipHash(ip.IP))
-				return &ip, lookupTime, nil
+                probeIPInfo.WithLabelValues(target, ip.IP.String(), "ip6").Set(1)
+                return &ip, lookupTime, nil
 			}
 
 			// ip6 as fallback
@@ -121,10 +130,12 @@ func chooseProtocol(ctx context.Context, IPProtocol string, fallbackIPProtocol b
 	}
 
 	// Use fallback ip protocol.
-	if fallbackProtocol == "ip4" {
+    if fallbackProtocol == "ip4" {
 		probeIPProtocolGauge.Set(4)
+        probeIPInfo.WithLabelValues(target, fallback.IP.String(), "ip4").Set(1)
 	} else {
 		probeIPProtocolGauge.Set(6)
+        probeIPInfo.WithLabelValues(target, fallback.IP.String(), "ip6").Set(1)
 	}
 	probeIPAddrHash.Set(ipHash(fallback.IP))
 	logger.Debug("Resolved target address", "target", target, "ip", fallback.String())

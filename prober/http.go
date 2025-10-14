@@ -587,8 +587,12 @@ func ProbeHTTP(ctx context.Context, target string, module config.Module, registr
 	} else {
 		requestErrored := (err != nil)
 
-		logger.Debug("Received HTTP response", "status_code", resp.StatusCode)
-		if len(httpConfig.ValidStatusCodes) != 0 {
+        logger.Debug("Received HTTP response", "status_code", resp.StatusCode)
+        // Accept any HTTP response if enabled
+        if httpConfig.AcceptAnyResponse {
+            success = true
+            logger.Debug("Accepting any HTTP response due to accept_any_response setting", "status_code", resp.StatusCode)
+        } else if len(httpConfig.ValidStatusCodes) != 0 {
 			for _, code := range httpConfig.ValidStatusCodes {
 				if resp.StatusCode == code {
 					success = true

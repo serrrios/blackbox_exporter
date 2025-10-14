@@ -1,0 +1,10 @@
+modules:
+  http_any_response:
+    prober: http
+    timeout: 5s
+    http:
+      accept_any_response: true
+      method: GET
+      follow_redirects: true
+
+
