@@ -18,7 +18,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"go.yaml.in/yaml/v3"
+	yaml "gopkg.in/yaml.v3"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -261,4 +261,65 @@ func TestNewCELProgram(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOpenSSLHTTPProbeUnmarshal(t *testing.T) {
+	t.Run("valid openssl http module", func(t *testing.T) {
+		input := []byte(`
+modules:
+  openssl_https:
+    prober: openssl_http
+    timeout: 5s
+    openssl_http:
+      method: GET
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: true
+      follow_redirects: true
+      headers:
+        Host: gost.example.internal
+      tls_config:
+        insecure_skip_verify: true
+      openssl_binary: /usr/bin/openssl
+      openssl_provider: gost
+`)
+
+		var cfg Config
+		if err := yaml.Unmarshal(input, &cfg); err != nil {
+			t.Fatalf("unexpected unmarshal error: %v", err)
+		}
+
+		module, ok := cfg.Modules["openssl_https"]
+		if !ok {
+			t.Fatal("expected openssl_https module to be loaded")
+		}
+		if module.Prober != "openssl_http" {
+			t.Fatalf("expected prober openssl_http, got %q", module.Prober)
+		}
+		if module.OpenSSLHTTP.Method != "GET" {
+			t.Fatalf("expected method GET, got %q", module.OpenSSLHTTP.Method)
+		}
+		if module.OpenSSLHTTP.OpenSSLBinary != "/usr/bin/openssl" {
+			t.Fatalf("expected custom openssl binary, got %q", module.OpenSSLHTTP.OpenSSLBinary)
+		}
+		if module.OpenSSLHTTP.OpenSSLProvider != "gost" {
+			t.Fatalf("expected gost provider, got %q", module.OpenSSLHTTP.OpenSSLProvider)
+		}
+	})
+
+	t.Run("body and body_file are mutually exclusive", func(t *testing.T) {
+		input := []byte(`
+modules:
+  openssl_bad:
+    prober: openssl_http
+    openssl_http:
+      body: '{}'
+      body_file: body.json
+`)
+
+		var cfg Config
+		err := yaml.Unmarshal(input, &cfg)
+		if err == nil || err.Error() != "setting body and body_file both are not allowed" {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
 }

@@ -28,3 +28,12 @@ dependencies-stamp
 .deps
 *.tar.gz
 /vendor
+
+# Local build / release artifacts (fork)
+/blackbox_exporter_linux_amd64
+/blackbox_exporter_linux_amd64.*
+/blackbox_exporter_linux_amd64_optimized
+/blackbox_exporter.exe
+/blackbox_exporter.exe~
+/blackbox_exporter-master/
+

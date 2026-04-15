@@ -29,7 +29,7 @@ modules:
 ### `<module>`
 ```yml
 
-  # The protocol over which the probe will take place (http, tcp, dns, icmp, grpc).
+  # The protocol over which the probe will take place (http, openssl_http, tcp, dns, icmp, grpc).
   prober: <prober_string>
 
   # How long the probe will wait before giving up.
@@ -37,6 +37,7 @@ modules:
 
   # The specific probe configuration - at most one of these should be specified.
   [ http: <http_probe> ]
+  [ openssl_http: <openssl_http_probe> ]
   [ tcp: <tcp_probe> ]
   [ dns: <dns_probe> ]
   [ icmp: <icmp_probe> ]
@@ -173,6 +174,95 @@ modules:
   # It is mutually exclusive with `body`.
   [ body_file: <filename> ]
 
+```
+
+### `<openssl_http_probe>`
+```yml
+
+  # Linux-only HTTPS probe that performs TLS and HTTP through the OpenSSL CLI backend.
+  #
+  # The metric set is intended to be close to the standard http prober:
+  # probe_success, probe_http_*, probe_ssl_*, probe_tls_*, and the custom IP/DNS
+  # metrics already present in this fork.
+
+  # Accepted status codes for this probe. Defaults to 2xx.
+  [ valid_status_codes: [<int>, ...] | default = 2xx ]
+
+  # Accepted HTTP versions for this probe.
+  [ valid_http_versions: <string>, ... ]
+
+  # The HTTP method the probe will use.
+  [ method: <string> | default = "GET" ]
+
+  # The HTTP headers set for the probe.
+  headers:
+    [ <string>: <string> ... ]
+
+  # The maximum uncompressed body length in bytes that will be processed.
+  [ body_size_limit: <size> | default = 0 ]
+
+  # The compression algorithm to use to decompress the response.
+  [ compression: <string> | default = "" ]
+
+  # Whether or not the probe will follow redirects.
+  [ follow_redirects: <boolean> | default = true ]
+
+  # Probe fails if SSL is present.
+  [ fail_if_ssl: <boolean> | default = false ]
+
+  # Probe fails if SSL is not present.
+  [ fail_if_not_ssl: <boolean> | default = false ]
+
+  # Probe fails if response body JSON matches the CEL expression or if response is not JSON.
+  fail_if_body_json_matches_cel: <string>
+
+  # Probe fails if response body JSON does not match CEL expression or if response is not JSON.
+  fail_if_body_json_not_matches_cel: <string>
+
+  # Probe fails if response body matches regex.
+  fail_if_body_matches_regexp:
+    [ - <regex>, ... ]
+
+  # Probe fails if response body does not match regex.
+  fail_if_body_not_matches_regexp:
+    [ - <regex>, ... ]
+
+  # Probe fails if response header matches regex.
+  fail_if_header_matches:
+    [ - <http_header_match_spec>, ... ]
+
+  # Probe fails if response header does not match regex.
+  fail_if_header_not_matches:
+    [ - <http_header_match_spec>, ... ]
+
+  # Configuration for TLS protocol of the OpenSSL HTTP probe.
+  tls_config:
+    [ <tls_config> ]
+
+  # The IP protocol of the probe (ip4, ip6).
+  [ preferred_ip_protocol: <string> | default = "ip6" ]
+  [ ip_protocol_fallback: <boolean> | default = true ]
+
+  # The body of the HTTP request used in probe.
+  [ body: <string> ]
+
+  # Read the HTTP request body from a file. Mutually exclusive with `body`.
+  [ body_file: <filename> ]
+
+  # Accept any HTTP response status code.
+  [ accept_any_response: <boolean> | default = false ]
+
+  # Path to the OpenSSL binary. Defaults to `openssl`.
+  [ openssl_binary: <string> | default = "openssl" ]
+
+  # OpenSSL provider name to load, for example `gost`.
+  [ openssl_provider: <string> ]
+
+  # Path to OpenSSL provider modules. Exported as OPENSSL_MODULES at runtime.
+  [ openssl_provider_path: <string> ]
+
+  # Legacy OpenSSL engine name. Use only if your environment still requires engines.
+  [ openssl_engine: <string> ]
 ```
 
 #### `<http_header_match_spec>`

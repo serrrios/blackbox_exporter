@@ -29,7 +29,7 @@ import (
 	"time"
 
 	"github.com/google/cel-go/cel"
-	"go.yaml.in/yaml/v3"
+	yaml "gopkg.in/yaml.v3"
 
 	"github.com/alecthomas/units"
 	"github.com/miekg/dns"
@@ -42,6 +42,7 @@ var (
 	// DefaultModule set default configuration for the Module
 	DefaultModule = Module{
 		HTTP: DefaultHTTPProbe,
+		OpenSSLHTTP: DefaultOpenSSLHTTPProbe,
 		TCP:  DefaultTCPProbe,
 		ICMP: DefaultICMPProbe,
 		DNS:  DefaultDNSProbe,
@@ -51,6 +52,13 @@ var (
 	DefaultHTTPProbe = HTTPProbe{
 		IPProtocolFallback: true,
 		HTTPClientConfig:   config.DefaultHTTPClientConfig,
+	}
+
+	// DefaultOpenSSLHTTPProbe sets default value for OpenSSLHTTPProbe.
+	DefaultOpenSSLHTTPProbe = OpenSSLHTTPProbe{
+		IPProtocolFallback: true,
+		FollowRedirects:    true,
+		OpenSSLBinary:      "openssl",
 	}
 
 	// DefaultGRPCProbe set default value for HTTPProbe
@@ -87,7 +95,6 @@ type SafeConfig struct {
 	C                   *Config
 	configReloadSuccess prometheus.Gauge
 	configReloadSeconds prometheus.Gauge
-	configChecksum      string
 }
 
 func NewSafeConfig(reg prometheus.Registerer) *SafeConfig {
@@ -115,21 +122,6 @@ func (sc *SafeConfig) ReloadConfig(confFile string, logger *slog.Logger) (err er
 			sc.configReloadSeconds.SetToCurrentTime()
 		}
 	}()
-
-	var currentConfigChecksum string
-	currentConfigChecksum, err = GenerateChecksum(confFile)
-	if err != nil {
-		return fmt.Errorf("failed to generate initial checksum for configuration file: %s", err)
-	}
-	if currentConfigChecksum == sc.configChecksum {
-		if logger != nil {
-			logger.Info("Configuration checksum check passed. No changes detected.")
-		}
-		return nil
-	}
-	if logger != nil {
-		logger.Info("Configuration file change detected, reloading the configuration.")
-	}
 
 	yamlReader, err := os.Open(confFile)
 	if err != nil {
@@ -161,7 +153,6 @@ func (sc *SafeConfig) ReloadConfig(confFile string, logger *slog.Logger) (err er
 
 	sc.Lock()
 	sc.C = c
-	sc.configChecksum = currentConfigChecksum
 	sc.Unlock()
 
 	return nil
@@ -281,13 +272,14 @@ func MustNewRegexp(s string) Regexp {
 }
 
 type Module struct {
-	Prober  string        `yaml:"prober,omitempty"`
-	Timeout time.Duration `yaml:"timeout,omitempty"`
-	HTTP    HTTPProbe     `yaml:"http,omitempty"`
-	TCP     TCPProbe      `yaml:"tcp,omitempty"`
-	ICMP    ICMPProbe     `yaml:"icmp,omitempty"`
-	DNS     DNSProbe      `yaml:"dns,omitempty"`
-	GRPC    GRPCProbe     `yaml:"grpc,omitempty"`
+	Prober      string           `yaml:"prober,omitempty"`
+	Timeout     time.Duration    `yaml:"timeout,omitempty"`
+	HTTP        HTTPProbe        `yaml:"http,omitempty"`
+	OpenSSLHTTP OpenSSLHTTPProbe `yaml:"openssl_http,omitempty"`
+	TCP         TCPProbe         `yaml:"tcp,omitempty"`
+	ICMP        ICMPProbe        `yaml:"icmp,omitempty"`
+	DNS         DNSProbe         `yaml:"dns,omitempty"`
+	GRPC        GRPCProbe        `yaml:"grpc,omitempty"`
 }
 
 type HTTPProbe struct {
@@ -314,6 +306,37 @@ type HTTPProbe struct {
 	Compression                  string                  `yaml:"compression,omitempty"`
 	BodySizeLimit                units.Base2Bytes        `yaml:"body_size_limit,omitempty"`
 	UseHTTP3                     bool                    `yaml:"enable_http3,omitempty"`
+	AcceptAnyResponse            bool                    `yaml:"accept_any_response,omitempty"`
+}
+
+type OpenSSLHTTPProbe struct {
+	// Defaults to 2xx.
+	ValidStatusCodes             []int             `yaml:"valid_status_codes,omitempty"`
+	ValidHTTPVersions            []string          `yaml:"valid_http_versions,omitempty"`
+	IPProtocol                   string            `yaml:"preferred_ip_protocol,omitempty"`
+	IPProtocolFallback           bool              `yaml:"ip_protocol_fallback,omitempty"`
+	NoFollowRedirects            *bool             `yaml:"no_follow_redirects,omitempty"`
+	FollowRedirects              bool              `yaml:"follow_redirects,omitempty"`
+	FailIfSSL                    bool              `yaml:"fail_if_ssl,omitempty"`
+	FailIfNotSSL                 bool              `yaml:"fail_if_not_ssl,omitempty"`
+	Method                       string            `yaml:"method,omitempty"`
+	Headers                      map[string]string `yaml:"headers,omitempty"`
+	FailIfBodyMatchesRegexp      []Regexp          `yaml:"fail_if_body_matches_regexp,omitempty"`
+	FailIfBodyNotMatchesRegexp   []Regexp          `yaml:"fail_if_body_not_matches_regexp,omitempty"`
+	FailIfBodyJsonMatchesCEL     *CELProgram       `yaml:"fail_if_body_json_matches_cel,omitempty"`
+	FailIfBodyJsonNotMatchesCEL  *CELProgram       `yaml:"fail_if_body_json_not_matches_cel,omitempty"`
+	FailIfHeaderMatchesRegexp    []HeaderMatch     `yaml:"fail_if_header_matches,omitempty"`
+	FailIfHeaderNotMatchesRegexp []HeaderMatch     `yaml:"fail_if_header_not_matches,omitempty"`
+	Body                         string            `yaml:"body,omitempty"`
+	BodyFile                     string            `yaml:"body_file,omitempty"`
+	Compression                  string            `yaml:"compression,omitempty"`
+	BodySizeLimit                units.Base2Bytes  `yaml:"body_size_limit,omitempty"`
+	AcceptAnyResponse            bool              `yaml:"accept_any_response,omitempty"`
+	TLSConfig                    config.TLSConfig  `yaml:"tls_config,omitempty"`
+	OpenSSLBinary                string            `yaml:"openssl_binary,omitempty"`
+	OpenSSLProvider              string            `yaml:"openssl_provider,omitempty"`
+	OpenSSLProviderPath          string            `yaml:"openssl_provider_path,omitempty"`
+	OpenSSLEngine                string            `yaml:"openssl_engine,omitempty"`
 }
 
 type GRPCProbe struct {
@@ -468,6 +491,39 @@ func (s *HTTPProbe) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (s *OpenSSLHTTPProbe) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	*s = DefaultOpenSSLHTTPProbe
+	type plain OpenSSLHTTPProbe
+	if err := unmarshal((*plain)(s)); err != nil {
+		return err
+	}
+
+	// BodySizeLimit == 0 means no limit.
+	if s.BodySizeLimit < 0 || s.BodySizeLimit == math.MaxInt64 {
+		s.BodySizeLimit = math.MaxInt64 - 1
+	}
+
+	if s.NoFollowRedirects != nil {
+		s.FollowRedirects = !*s.NoFollowRedirects
+	}
+
+	if s.Body != "" && s.BodyFile != "" {
+		return errors.New("setting body and body_file both are not allowed")
+	}
+
+	for key, value := range s.Headers {
+		switch textproto.CanonicalMIMEHeaderKey(key) {
+		case "Accept-Encoding":
+			if !isCompressionAcceptEncodingValid(s.Compression, value) {
+				return fmt.Errorf(`invalid configuration "%s: %s", "compression: %s"`, key, value, s.Compression)
+			}
+		}
+	}
+
+	return nil
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (s *GRPCProbe) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	*s = DefaultGRPCProbe
 	type plain GRPCProbe
@@ -484,9 +540,7 @@ func (s *DNSProbe) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if err := unmarshal((*plain)(s)); err != nil {
 		return err
 	}
-	if s.QueryName == "" {
-		return errors.New("query name must be set for DNS module")
-	}
+	// QueryName is now optional - can be overridden by hostname parameter
 	if s.QueryClass != "" {
 		if _, ok := dns.StringToClass[s.QueryClass]; !ok {
 			return fmt.Errorf("query class '%s' is not valid", s.QueryClass)

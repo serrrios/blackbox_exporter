@@ -67,3 +67,49 @@ modules:
       enable_http3: true
       enable_http2: false
       valid_http_versions: ["HTTP/3.0"]
+  # Полный шаблон openssl_http: все поля OpenSSLHTTPProbe (остальное — по умолчанию в коде).
+  # OpenSSL 1.1.x + GOST: используйте openssl_engine. OpenSSL 3.x + gost provider: openssl_provider* (без engine).
+  openssl_http_2xx:
+    prober: openssl_http
+    timeout: 15s
+    openssl_http:
+      valid_status_codes: [200, 201, 202, 204, 301, 302, 303, 307, 308, 401, 403, 404, 429, 500, 502, 503]
+      valid_http_versions: ["HTTP/1.0", "HTTP/1.1"]
+      preferred_ip_protocol: "ip4"
+      ip_protocol_fallback: true
+      follow_redirects: true
+      fail_if_ssl: false
+      fail_if_not_ssl: false
+      method: GET
+      headers:
+        User-Agent: "BlackboxExporter/openssl_http"
+        Accept: "*/*"
+      accept_any_response: false
+      compression: ""
+      body_size_limit: 10MB
+      tls_config:
+        insecure_skip_verify: false
+        # server_name: "override-sni.example.com"
+        # ca_file: "/etc/pki/tls/certs/ca-bundle.crt"
+        # cert_file: "/path/to/client.pem"
+        # key_file: "/path/to/client.key"
+      openssl_binary: "/usr/bin/openssl"
+      openssl_engine: "gost"
+      # openssl_provider: "gost"
+      # openssl_provider_path: "/usr/lib/ossl-modules"
+      # no_follow_redirects: false
+      # body: ""
+      # body_file: "/path/to/payload.json"
+      # fail_if_body_matches_regexp:
+      #   - "(?i)internal server error"
+      # fail_if_body_not_matches_regexp:
+      #   - "<html"
+      # fail_if_header_matches:
+      #   - header: "X-Blackbox-Unexpected"
+      #     regexp: "should-not-appear"
+      # fail_if_header_not_matches:
+      #   - header: "Strict-Transport-Security"
+      #     regexp: "max-age="
+      #     allow_missing: true
+      # fail_if_body_json_matches_cel: …
+      # fail_if_body_json_not_matches_cel: …
